@@ -78,6 +78,20 @@ function Get-VenvPythonPath {
     return $null
 }
 
+function Get-CodexBundledPythonPaths {
+    $paths = New-Object System.Collections.Generic.List[string]
+    foreach ($homePath in @($HOME, $env:USERPROFILE)) {
+        if ([string]::IsNullOrWhiteSpace($homePath)) {
+            continue
+        }
+        $candidate = Join-Path $homePath ".cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+        if (!$paths.Contains($candidate)) {
+            $paths.Add($candidate) | Out-Null
+        }
+    }
+    return $paths
+}
+
 function Get-MarkerSingleFromPython {
     param([string]$PythonPath)
     if ([string]::IsNullOrWhiteSpace($PythonPath)) {
@@ -111,6 +125,32 @@ function Get-PythonFromMarkerSingle {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) {
             return $candidate
         }
+    }
+    return $null
+}
+
+function Test-PythonCommand {
+    param(
+        [string]$Command,
+        [string[]]$CommandArgs = @()
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Command)) {
+        return $null
+    }
+
+    try {
+        $output = & $Command @($CommandArgs + @("-c", "import sys; print(sys.executable)")) 2>&1
+        if ($LASTEXITCODE -eq 0 -and $output) {
+            return [pscustomobject]@{
+                command = $Command
+                args = $CommandArgs
+                executable = ($output | Select-Object -First 1).ToString().Trim()
+            }
+        }
+    }
+    catch {
+        return $null
     }
     return $null
 }
@@ -213,29 +253,51 @@ function Test-MarkerCandidate {
 }
 
 function Get-UsablePythonCommand {
+    foreach ($pythonPath in Get-CodexBundledPythonPaths) {
+        if (Test-Path -LiteralPath $pythonPath -PathType Leaf) {
+            $result = Test-PythonCommand -Command $pythonPath
+            if ($null -ne $result) {
+                return $result
+            }
+        }
+    }
+
     $commands = @("python", "python3", "py")
     foreach ($cmd in $commands) {
         $found = Get-Command $cmd -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($null -eq $found) {
             continue
         }
-        try {
-            if ($cmd -eq "py") {
-                $output = & $found.Source -3 -c "import sys; print(sys.executable)" 2>&1
-            }
-            else {
-                $output = & $found.Source -c "import sys; print(sys.executable)" 2>&1
-            }
-            if ($LASTEXITCODE -eq 0 -and $output) {
-                return [pscustomobject]@{
-                    command = $found.Source
-                    args = $(if ($cmd -eq "py") { @("-3") } else { @() })
-                    executable = ($output | Select-Object -First 1).ToString().Trim()
-                }
-            }
+        $args = $(if ($cmd -eq "py") { @("-3") } else { @() })
+        $result = Test-PythonCommand -Command $found.Source -CommandArgs $args
+        if ($null -ne $result) {
+            return $result
         }
-        catch {
+    }
+    return $null
+}
+
+function Get-NvidiaSmiCommand {
+    $candidates = New-Object System.Collections.Generic.List[string]
+    $cmd = Get-Command nvidia-smi -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -ne $cmd -and ![string]::IsNullOrWhiteSpace($cmd.Source)) {
+        $candidates.Add($cmd.Source) | Out-Null
+    }
+
+    if ($env:SystemRoot) {
+        $candidates.Add((Join-Path $env:SystemRoot "System32\nvidia-smi.exe")) | Out-Null
+    }
+    $candidates.Add("C:\Windows\System32\nvidia-smi.exe") | Out-Null
+    $candidates.Add("C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe") | Out-Null
+
+    $seen = @{}
+    foreach ($candidate in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($candidate) -or $seen.ContainsKey($candidate)) {
             continue
+        }
+        $seen[$candidate] = $true
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return $candidate
         }
     }
     return $null
@@ -248,20 +310,27 @@ function Get-MarkerGpuStatus {
         cuda_available = $false
         cuda_device_count = 0
         cuda_device_name = $null
+        torch_version = $null
+        torch_cuda_version = $null
         nvidia_smi_detected = $false
         nvidia_smi_name = $null
+        nvidia_smi_driver_version = $null
+        nvidia_smi_cuda_version = $null
         reason = $null
     }
 
     if (![string]::IsNullOrWhiteSpace($PythonPath) -and (Test-Path -LiteralPath $PythonPath -PathType Leaf)) {
-        $code = "import json, torch; available=bool(torch.cuda.is_available()); count=int(torch.cuda.device_count() if available else 0); name=torch.cuda.get_device_name(0) if available and count else None; print(json.dumps({'cuda_available': available, 'cuda_device_count': count, 'cuda_device_name': name, 'reason': None}))"
+        $code = "import json, torch; available=bool(torch.cuda.is_available()); count=int(torch.cuda.device_count() if available else 0); name=torch.cuda.get_device_name(0) if available and count else None; print(json.dumps({'cuda_available': available, 'cuda_device_count': count, 'cuda_device_name': name, 'torch_version': torch.__version__, 'torch_cuda_version': torch.version.cuda, 'reason': None}))"
         try {
             $probeOutput = & $PythonPath -c $code 2>&1
-            if ($LASTEXITCODE -eq 0 -and $probeOutput) {
-                $torch = ($probeOutput | Select-Object -First 1) | ConvertFrom-Json
+            $jsonLine = $probeOutput | Where-Object { $_.ToString().TrimStart().StartsWith("{") } | Select-Object -Last 1
+            if ($LASTEXITCODE -eq 0 -and $jsonLine) {
+                $torch = $jsonLine | ConvertFrom-Json
                 $status.cuda_available = [bool]$torch.cuda_available
                 $status.cuda_device_count = [int]$torch.cuda_device_count
                 $status.cuda_device_name = $torch.cuda_device_name
+                $status.torch_version = $torch.torch_version
+                $status.torch_cuda_version = $torch.torch_cuda_version
                 $status.reason = $torch.reason
             }
             elseif ($probeOutput) {
@@ -273,18 +342,40 @@ function Get-MarkerGpuStatus {
         }
     }
 
-    $nvidia = Get-Command nvidia-smi -ErrorAction SilentlyContinue | Select-Object -First 1
+    $nvidia = Get-NvidiaSmiCommand
     if ($null -ne $nvidia) {
         try {
-            $gpuName = & $nvidia.Source --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1
-            if ($LASTEXITCODE -eq 0 -and $gpuName) {
+            $gpuInfo = & $nvidia --query-gpu=name,driver_version --format=csv,noheader 2>$null | Select-Object -First 1
+            if ($gpuInfo) {
+                $parts = $gpuInfo.ToString().Split(",", 2)
                 $status.nvidia_smi_detected = $true
-                $status.nvidia_smi_name = $gpuName.ToString().Trim()
+                $status.nvidia_smi_name = $parts[0].Trim()
+                if ($parts.Count -gt 1) {
+                    $status.nvidia_smi_driver_version = $parts[1].Trim()
+                }
+            }
+
+            $raw = & $nvidia 2>$null
+            $cudaLine = $raw | Where-Object { $_ -match "CUDA Version:\s*([0-9.]+)" } | Select-Object -First 1
+            if ($cudaLine -and $cudaLine.ToString() -match "CUDA Version:\s*([0-9.]+)") {
+                $status.nvidia_smi_cuda_version = $Matches[1]
+            }
+
+            if (!$status.nvidia_smi_detected) {
+                $gpuLine = $raw | Where-Object { $_ -match "^\|\s*\d+\s+(.+?)\s+(WDDM|TCC)\s+\|" } | Select-Object -First 1
+                if ($gpuLine -and $gpuLine.ToString() -match "^\|\s*\d+\s+(.+?)\s+(WDDM|TCC)\s+\|") {
+                    $status.nvidia_smi_detected = $true
+                    $status.nvidia_smi_name = $Matches[1].Trim()
+                }
             }
         }
         catch {
             # Ignore nvidia-smi probing errors.
         }
+    }
+
+    if (!$status.cuda_available -and $status.nvidia_smi_detected -and [string]::IsNullOrWhiteSpace($status.reason)) {
+        $status.reason = "NVIDIA GPU detected, but PyTorch CUDA is unavailable. Install a CUDA-enabled torch wheel compatible with the driver."
     }
 
     return [pscustomobject]$status

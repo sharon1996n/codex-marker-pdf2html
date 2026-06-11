@@ -23,7 +23,7 @@ Run scripts from this skill directory. Use `powershell` or `pwsh`; pass `-NoProf
 .\scripts\install_marker.ps1
 ```
 
-Default install location is `%LOCALAPPDATA%\Codex\tools\marker-pdf\.venv`. The installer pins `marker-pdf==1.10.2` and also installs `psutil`.
+Default install location is `%LOCALAPPDATA%\Codex\tools\marker-pdf\.venv`. The installer pins `marker-pdf==1.10.2` and also installs `psutil`. On Windows, it can use Codex's bundled Python when no system `python` or `uv` is available. If an NVIDIA GPU is detected and PyTorch CUDA is unavailable, it installs `torch==2.7.1+cu118` by default; pass `-SkipCudaTorch` only when CPU-only conversion is intended.
 
 3. Decide the output root:
 
@@ -37,15 +37,25 @@ Default install location is `%LOCALAPPDATA%\Codex\tools\marker-pdf\.venv`. The i
 
 If they agree, run conversion with `-UseDocumentsDefault`. If they choose another folder, pass `-OutputRoot <path>` and usually `-SetDefaultOutputRoot` so future runs use it.
 
-4. Convert with:
+4. Prewarm Marker/Surya models before the first conversion, or after any failed model download:
+
+```powershell
+.\scripts\prewarm_marker_models.ps1
+```
+
+This downloads each manifest file directly into the final Datalab model cache with retry and resume support. Use it before conversion when `models.datalab.to` has intermittent SSL/network failures; it avoids Surya's temporary-directory rollback that can re-download large `.safetensors` files from scratch.
+
+5. Convert with:
 
 ```powershell
 .\scripts\convert_with_marker.ps1 -InputPath "<pdf-or-folder>" -Format html
 ```
 
+Use `-PrewarmModels` on conversion when you want the conversion script to run model prewarming first.
+
 Use `-Format markdown`, `json`, or `chunks` only when requested. HTML is the default.
 
-5. Verify output after conversion:
+6. Verify output after conversion:
 
 - Confirm the primary output file exists: `.html`, `.md`, or `.json`.
 - Confirm `<stem>_meta.json` exists when Marker produced it.
@@ -73,15 +83,19 @@ When a valid Marker environment is found, cache it and reuse it on later runs.
 - If CUDA is unavailable, run on CPU.
 - If `nvidia-smi` sees a GPU but PyTorch CUDA is unavailable, report that fact and still use CPU.
 
+`install_marker.ps1` now handles the common Windows failure mode where `pip install marker-pdf` installs a CPU-only `torch` wheel despite a working NVIDIA driver. It detects `nvidia-smi` from `PATH`, `C:\Windows\System32\nvidia-smi.exe`, and the NVIDIA NVSMI directory, then installs a CUDA-enabled torch wheel unless `-SkipCudaTorch` is passed.
+
 Use `-ForceCpu` if the user explicitly asks not to use the GPU.
 
 ## Known Behaviors
 
 - Marker may contact `models.datalab.to` to download or verify Surya models. If this fails because of sandbox or network restrictions, rerun with the required approval.
+- If model downloads repeatedly fail after downloading large files, run `scripts/prewarm_marker_models.ps1` instead of retrying conversion. The prewarm script writes directly to the final cache and supports `curl` resume.
 - CPU conversion can be slow. A 10-20 page paper may take several minutes.
 - Prefer `marker_single.exe` over `marker.exe`; some installs have a batch entrypoint that fails without `psutil`.
 - Marker may log "Saved markdown" even when `--output_format html` is used. Verify the actual output file extension instead of relying only on that log line.
 - HTML output depends on same-directory extracted image files. Do not deliver only the `.html` file unless the user explicitly asks for a single-file derivative.
+- Report both timings when available: the script `total_wall_seconds`/per-file `marker_wall_seconds`, and Marker's own `Total time` log line.
 
 ## Attribution
 

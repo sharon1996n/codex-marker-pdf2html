@@ -21,6 +21,8 @@ param(
 
     [switch]$DisableImageExtraction,
 
+    [switch]$PrewarmModels,
+
     [string[]]$ExtraMarkerArgs
 )
 
@@ -89,6 +91,13 @@ else {
     $selectedDevice = "cpu"
 }
 
+if ($PrewarmModels) {
+    & (Join-Path $scriptDir "prewarm_marker_models.ps1") | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "Model prewarm failed with exit code $LASTEXITCODE"
+    }
+}
+
 $files = New-Object System.Collections.Generic.List[string]
 foreach ($path in $InputPath) {
     if (Test-Path -LiteralPath $path -PathType Container) {
@@ -116,6 +125,7 @@ $extensionByFormat = @{
 }
 
 $results = New-Object System.Collections.Generic.List[object]
+$overall = [System.Diagnostics.Stopwatch]::StartNew()
 
 try {
     foreach ($file in $files) {
@@ -141,9 +151,12 @@ try {
             }
         }
 
+        $fileTimer = [System.Diagnostics.Stopwatch]::StartNew()
         & $markerSingle @args
-        if ($LASTEXITCODE -ne 0) {
-            throw "marker_single failed for '$file' with exit code $LASTEXITCODE"
+        $markerExitCode = $LASTEXITCODE
+        $fileTimer.Stop()
+        if ($markerExitCode -ne 0) {
+            throw "marker_single failed for '$file' with exit code $markerExitCode"
         }
 
         $stem = [IO.Path]::GetFileNameWithoutExtension($file)
@@ -171,8 +184,11 @@ try {
             selected_device = $selectedDevice
             cuda_available = $gpu.cuda_available
             cuda_device_name = $gpu.cuda_device_name
+            torch_version = $gpu.torch_version
+            torch_cuda_version = $gpu.torch_cuda_version
             nvidia_smi_detected = $gpu.nvidia_smi_detected
             nvidia_smi_name = $gpu.nvidia_smi_name
+            marker_wall_seconds = [Math]::Round($fileTimer.Elapsed.TotalSeconds, 3)
         }) | Out-Null
     }
 }
@@ -181,6 +197,7 @@ finally {
     $env:CUDA_VISIBLE_DEVICES = $oldCudaVisibleDevices
 }
 
+$overall.Stop()
 $summary = [pscustomobject]@{
     status = "converted"
     marker_single = $markerSingle
@@ -188,6 +205,7 @@ $summary = [pscustomobject]@{
     output_root = $OutputRoot
     selected_device = $selectedDevice
     gpu = $gpu
+    total_wall_seconds = [Math]::Round($overall.Elapsed.TotalSeconds, 3)
     results = $results
 }
 

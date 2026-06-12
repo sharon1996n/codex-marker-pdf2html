@@ -2,7 +2,15 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$HtmlPath,
 
-  [string]$OutputDir
+  [string]$OutputDir,
+
+  [switch]$EnableTranslation,
+
+  [string]$SourceLang = "en",
+
+  [string]$TargetLang = "zh",
+
+  [switch]$InstallTranslatorIfMissing
 )
 
 $ErrorActionPreference = "Stop"
@@ -68,6 +76,31 @@ if ($html -notmatch 'reader\.js') {
 
 [System.IO.File]::WriteAllText($targetHtml, $html, [System.Text.UTF8Encoding]::new($false))
 
+$translationSummary = $null
+if ($EnableTranslation) {
+  $translateArgs = @(
+    "-HtmlPath", $targetHtml,
+    "-InPlace",
+    "-SourceLang", $SourceLang,
+    "-TargetLang", $TargetLang
+  )
+  if ($InstallTranslatorIfMissing) {
+    $translateArgs += "-InstallIfMissing"
+  }
+  $translationOutput = & (Join-Path $scriptDir "translate_marker_html.ps1") @translateArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "Translation enhancement failed with exit code $LASTEXITCODE"
+  }
+  $translationJson = Join-Path $resolvedOutputDir ("translations." + $TargetLang + ".json")
+  if (Test-Path -LiteralPath $translationJson -PathType Leaf) {
+    $translationPayload = Get-Content -LiteralPath $translationJson -Raw | ConvertFrom-Json
+    $translationSummary = [pscustomobject]@{
+      translation_json = $translationJson
+      sentence_count = $translationPayload.count
+    }
+  }
+}
+
 $imageCount = (Get-ChildItem -LiteralPath $resolvedOutputDir -File -Include *.jpeg,*.jpg,*.png,*.webp,*.gif,*.svg -Recurse).Count
 
 [pscustomobject]@{
@@ -76,4 +109,7 @@ $imageCount = (Get-ChildItem -LiteralPath $resolvedOutputDir -File -Include *.jp
   Images = $imageCount
   Css = Test-Path -LiteralPath (Join-Path $resolvedOutputDir "reader.css")
   Js = Test-Path -LiteralPath (Join-Path $resolvedOutputDir "reader.js")
+  TranslationEnabled = [bool]$EnableTranslation
+  TranslationJson = $(if ($translationSummary) { $translationSummary.translation_json } else { $null })
+  TranslationSentenceCount = $(if ($translationSummary) { $translationSummary.sentence_count } else { 0 })
 }

@@ -46,6 +46,13 @@ if ($resolvedSourceDir.TrimEnd('\') -eq $resolvedOutputDir.TrimEnd('\')) {
 New-Item -ItemType Directory -Force -Path $resolvedOutputDir | Out-Null
 
 Get-ChildItem -LiteralPath $resolvedSourceDir -Force | ForEach-Object {
+  $itemPath = [System.IO.Path]::GetFullPath($_.FullName).TrimEnd('\')
+  if ($itemPath -eq $resolvedOutputDir.TrimEnd('\')) {
+    return
+  }
+  if ($_.PSIsContainer -and $_.Name.EndsWith("_reader")) {
+    return
+  }
   if ($_.Name -in @("reader.css", "reader.js")) {
     return
   }
@@ -78,25 +85,28 @@ if ($html -notmatch 'reader\.js') {
 
 $translationSummary = $null
 if ($EnableTranslation) {
-  $translateArgs = @(
-    "-HtmlPath", $targetHtml,
-    "-InPlace",
-    "-SourceLang", $SourceLang,
-    "-TargetLang", $TargetLang
-  )
-  if ($InstallTranslatorIfMissing) {
-    $translateArgs += "-InstallIfMissing"
+  $translateParams = @{
+    HtmlPath = $targetHtml
+    InPlace = $true
+    SourceLang = $SourceLang
+    TargetLang = $TargetLang
   }
-  $translationOutput = & (Join-Path $scriptDir "translate_marker_html.ps1") @translateArgs
-  if ($LASTEXITCODE -ne 0) {
-    throw "Translation enhancement failed with exit code $LASTEXITCODE"
+  if ($InstallTranslatorIfMissing) {
+    $translateParams.InstallIfMissing = $true
+  }
+  $global:LASTEXITCODE = 0
+  $translationOutput = & (Join-Path $scriptDir "translate_marker_html.ps1") @translateParams
+  $translationExitCode = $LASTEXITCODE
+  if ($null -ne $translationExitCode -and $translationExitCode -ne 0) {
+    throw "Translation enhancement failed with exit code $translationExitCode"
   }
   $translationJson = Join-Path $resolvedOutputDir ("translations." + $TargetLang + ".json")
   if (Test-Path -LiteralPath $translationJson -PathType Leaf) {
-    $translationPayload = Get-Content -LiteralPath $translationJson -Raw | ConvertFrom-Json
+    $translationText = Get-Content -LiteralPath $translationJson -Raw
+    $translationCount = ([regex]::Matches($translationText, '"source"\s*:')).Count
     $translationSummary = [pscustomobject]@{
       translation_json = $translationJson
-      sentence_count = $translationPayload.count
+      sentence_count = $translationCount
     }
   }
 }

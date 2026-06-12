@@ -42,7 +42,7 @@ function Test-ArgosTranslator {
         }
     }
 
-    $code = @"
+    $code = @'
 import json
 import sys
 
@@ -51,25 +51,25 @@ target = sys.argv[2]
 try:
     import importlib.metadata as metadata
     import argostranslate.translate as translate
-    version = metadata.version("argostranslate")
+    version = metadata.version('argostranslate')
     installed = translate.get_installed_languages()
     from_lang = next((lang for lang in installed if lang.code == source), None)
     to_lang = next((lang for lang in installed if lang.code == target), None)
     pair = bool(from_lang and to_lang and from_lang.get_translation(to_lang))
     print(json.dumps({
-        "valid": True,
-        "argos_version": version,
-        "language_pair_installed": pair,
-        "installed_languages": [lang.code for lang in installed],
+        'valid': True,
+        'argos_version': version,
+        'language_pair_installed': pair,
+        'installed_languages': [lang.code for lang in installed],
     }, ensure_ascii=True))
 except Exception as exc:
     print(json.dumps({
-        "valid": False,
-        "argos_version": None,
-        "language_pair_installed": False,
-        "reason": str(exc),
+        'valid': False,
+        'argos_version': None,
+        'language_pair_installed': False,
+        'reason': str(exc),
     }, ensure_ascii=True))
-"@
+'@
 
     try {
         $output = & $PythonPath -c $code $SourceLang $TargetLang 2>&1

@@ -9,7 +9,7 @@ from argostranslate import translate
 
 BLOCK_TAGS = {"p", "li", "th", "td", "h1", "h2", "h3", "h4", "h5", "h6"}
 SKIP_TAGS = {"script", "style", "code", "pre", "math", "svg"}
-SENTENCE_RE = re.compile(r"(.+?(?:[.!?](?=\s+[\[(\"'A-Z0-9])|[.!?]$)))(\s*)", re.S)
+SENTENCE_RE = re.compile(r"(.+?[.!?])(\s+|$)", re.S)
 
 
 def normalize(text: str) -> str:

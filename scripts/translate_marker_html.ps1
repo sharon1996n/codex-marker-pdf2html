@@ -26,9 +26,6 @@ if ($InPlace -and ![string]::IsNullOrWhiteSpace($OutputHtmlPath)) {
 }
 
 $resolveOutput = & (Join-Path $scriptDir "resolve_translator.ps1") -SourceLang $SourceLang -TargetLang $TargetLang
-if ($LASTEXITCODE -ne 0) {
-    throw "Translator resolve failed with exit code $LASTEXITCODE"
-}
 
 $resolved = $resolveOutput | ConvertFrom-Json
 if ($resolved.status -ne "found" -or !$resolved.language_pair_installed) {

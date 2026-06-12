@@ -108,7 +108,7 @@ Optional:
 The script copies the source HTML directory, including same-directory images and metadata, injects `assets/reader.css` and `assets/reader.js`, and returns the enhanced HTML path plus copied image count. The enhanced page supports:
 
 - Marker heading navigation in source order, without trying to infer semantic heading levels.
-- Custom annotation labels that can be added, deleted, and reordered in the sidebar.
+- Custom annotation labels that can be added, deleted, and drag-reordered in the sidebar.
 - Text annotation and caption annotation; selecting a figure/table caption is enough to annotate the associated visual.
 - Page-end annotation summary.
 - JSON and Markdown export for later Codex report, slide, or LaTeX generation.

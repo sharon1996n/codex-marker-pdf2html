@@ -32,7 +32,7 @@
 HTML 格式对读者也比较友好：
 
 - 可以直接用浏览器打开。
-- 可以使用浏览器自带的翻译功能。
+- 可以进一步增强成本地阅读器，支持标注、标签和划线时显示句子翻译。
 - 图片、表格和正文通常会被保存在同一输出目录中，方便人工检查。
 - 后续接入其它 skills 时，可以更快、更准确地生成论文总结、阅读笔记或 PPT。
 
@@ -43,8 +43,10 @@ HTML 格式对读者也比较友好：
 - 转换前检测当前 Marker Python 是否支持 GPU；如果 CUDA 可用，就优先使用 GPU。
 - 默认输出 HTML，也支持在明确要求时输出 Markdown、JSON 或 chunks。
 - 转换后检查主要输出文件、元数据和图片资源是否存在。
+- 可以把 Marker 生成的 HTML 增强成本地阅读器：目录、标签、文本/图注标注、JSON/Markdown 导出。
+- 可以启用基于 Argos Translate 的轻量本地句子翻译；页面默认仍显示原文，只有划线选择文本时才显示匹配句子的译文。
 
-## Marker 致谢
+## 致谢
 
 本 skill 是 Codex 的编排层，不包含 Marker 源码。实际文档转换能力来自开源项目 Marker：
 
@@ -53,3 +55,9 @@ HTML 格式对读者也比较友好：
 - License: GPL-3.0-or-later
 
 如果重新分发 Marker 本体、打包后的环境或包含 Marker 的安装产物，请保留 Marker 的版权和许可证声明，并遵守其许可证条款。
+
+本 skill 的轻量本地翻译功能使用 Argos Translate：
+
+- Repository: https://github.com/argosopentech/argos-translate
+- Package: `argostranslate`
+- License: MIT

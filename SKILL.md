@@ -53,6 +53,8 @@ This downloads each manifest file directly into the final Datalab model cache wi
 
 Use `-PrewarmModels` on conversion when you want the conversion script to run model prewarming first.
 
+The conversion script protects Windows paths by staging each input under a hard-truncated safe filename before calling Marker. For HTML output, it then reads the generated HTML heading/title, sanitizes and hard-truncates that paper title, and renames the output folder plus primary HTML/meta files to that title.
+
 Use `-Format markdown`, `json`, or `chunks` only when requested. HTML is the default.
 
 6. Verify output after conversion:
@@ -111,7 +113,32 @@ The script copies the source HTML directory, including same-directory images and
 - Page-end annotation summary.
 - JSON and Markdown export for later Codex report, slide, or LaTeX generation.
 
-After enhancing, verify that the enhanced HTML exists, `reader.css` and `reader.js` are present in the output directory, and extracted image files were copied. Do not deliver only the enhanced `.html` file unless the user explicitly asks for a single-file derivative; the image assets must remain beside it.
+## Local Sentence Translation
+
+For lightweight local sentence translation, use Argos Translate. Do not use Ollama or other local large-language-model servers for this workflow.
+
+Check the local translator environment first:
+
+```powershell
+.\scripts\resolve_translator.ps1 -SourceLang en -TargetLang zh
+```
+
+If the translator or language pair is missing, ask before installing because installation writes to `%LOCALAPPDATA%\Codex\tools\argos-translate\.venv` and downloads Python packages plus the Argos language package:
+
+```powershell
+.\scripts\install_translator.ps1 -SourceLang en -TargetLang zh
+```
+
+To create an annotation reader with hidden sentence translations:
+
+```powershell
+.\scripts\enhance_marker_html_reader.ps1 -HtmlPath "<marker-output.html>" -EnableTranslation
+```
+
+Use `-InstallTranslatorIfMissing` only after user approval. `-EnableTranslation` copies the source HTML directory, injects reader assets, then writes sentence-level `data-translation-id` spans plus a hidden `reader-translations` JSON script and `translations.zh.json` sidecar. The article still shows only the original text; selecting text in the reader shows the matching sentence translation beside the label chips, and saved annotations include the matched translation.
+
+After enhancing with translation, verify that the enhanced HTML exists, `reader.css` and `reader.js` are present, `translations.<target>.json` exists, and the script reports a nonzero translation sentence count for normal English papers.
+
 ## Known Behaviors
 
 - Marker may contact `models.datalab.to` to download or verify Surya models. If this fails because of sandbox or network restrictions, rerun with the required approval.
@@ -120,6 +147,7 @@ After enhancing, verify that the enhanced HTML exists, `reader.css` and `reader.
 - Prefer `marker_single.exe` over `marker.exe`; some installs have a batch entrypoint that fails without `psutil`.
 - Marker may log "Saved markdown" even when `--output_format html` is used. Verify the actual output file extension instead of relying only on that log line.
 - HTML output depends on same-directory extracted image files. Do not deliver only the `.html` file unless the user explicitly asks for a single-file derivative.
+- Argos translation quality is lighter than LLM translation. It is intended for quick reading assistance, not polished publication-quality Chinese.
 - Report both timings when available: the script `total_wall_seconds`/per-file `marker_wall_seconds`, and Marker's own `Total time` log line.
 
 ## Attribution

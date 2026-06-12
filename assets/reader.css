@@ -221,6 +221,45 @@ body.reader-ready {
   padding: 7px 8px;
 }
 
+.reader-translation-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e7ef;
+}
+
+.reader-translation-title {
+  margin-bottom: 6px;
+  color: var(--reader-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.reader-translation-card {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid #d8e0ea;
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+
+.reader-translation-source {
+  color: #5d6978;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.reader-translation-text {
+  color: #17202c;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.reader-translation-empty {
+  color: var(--reader-muted);
+  font-size: 12px;
+}
+
 .reader-mark {
   border-radius: 3px;
   padding: 1px 2px;
@@ -347,6 +386,16 @@ body.reader-ready {
 
 .reader-card-text {
   margin: 0;
+  line-height: 1.55;
+}
+
+.reader-card-translation {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--reader-accent);
+  background: #f5f8fc;
+  color: #273343;
+  font-size: 14px;
   line-height: 1.55;
 }
 

@@ -28,6 +28,7 @@
 
   let labels = normalizeLabels(state.labels);
   let annotations = migrateAnnotations(state.annotations || []);
+  let translations = loadTranslations();
   let completed = Boolean(state.completed);
   let activeRange = null;
   let activeBlock = null;
@@ -152,6 +153,7 @@
     menu.id = "reader-selection-menu";
     menu.append(el("div", "reader-menu-title", "\u9009\u62e9\u6807\u6ce8\u6807\u7b7e"));
     menu.append(el("div", "reader-chip-row"));
+    menu.append(el("div", "reader-translation-panel"));
     return menu;
   }
 
@@ -168,6 +170,72 @@
     if (!labels.length) {
       row.append(el("div", "reader-summary-empty", "\u5148\u6dfb\u52a0\u4e00\u4e2a\u6807\u7b7e"));
     }
+  }
+
+  function renderSelectionTranslation(range, block) {
+    const panel = document.querySelector(".reader-translation-panel");
+    if (!panel) return;
+    panel.innerHTML = "";
+    if (!range || !block) return;
+
+    const matches = translationForRange(range, block);
+    if (!matches.length) {
+      if (hasTranslations()) {
+        panel.append(el("div", "reader-translation-empty", "\u672a\u5339\u914d\u5230\u8be5\u9009\u533a\u7684\u53e5\u5b50\u8bd1\u6587"));
+      }
+      return;
+    }
+
+    panel.append(el("div", "reader-translation-title", "\u53e5\u5b50\u8bd1\u6587"));
+    matches.slice(0, 3).forEach((item) => {
+      const card = el("div", "reader-translation-card");
+      card.append(el("div", "reader-translation-source", item.source));
+      card.append(el("div", "reader-translation-text", item.translation));
+      panel.append(card);
+    });
+  }
+
+  function translationForRange(range, block) {
+    if (!range || !block || !hasTranslations()) return [];
+    const items = [];
+    const seen = new Set();
+    block.querySelectorAll("[data-translation-id]").forEach((span) => {
+      if (!rangeIntersects(range, span)) return;
+      const id = span.dataset.translationId;
+      const item = translations[id];
+      if (!item || seen.has(id)) return;
+      seen.add(id);
+      items.push(item);
+    });
+
+    if (items.length) return items;
+
+    const selectedText = normalize(range.toString()).toLowerCase();
+    if (!selectedText || selectedText.length < 8) return [];
+    block.querySelectorAll("[data-translation-id]").forEach((span) => {
+      if (items.length >= 2) return;
+      const id = span.dataset.translationId;
+      const item = translations[id];
+      if (!item || seen.has(id)) return;
+      const source = normalize(item.source).toLowerCase();
+      if (source.includes(selectedText) || selectedText.includes(source)) {
+        seen.add(id);
+        items.push(item);
+      }
+    });
+    return items;
+  }
+
+  function rangeIntersects(range, node) {
+    try {
+      return range.intersectsNode(node);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function hasTranslations() {
+    return translations && Object.keys(translations).length > 0;
   }
 
   function renderLabelList() {
@@ -196,6 +264,7 @@
       const menu = document.getElementById("reader-selection-menu");
       if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
         menu.classList.remove("open");
+        renderSelectionTranslation(null, null);
         return;
       }
 
@@ -217,6 +286,7 @@
       const rect = range.getBoundingClientRect();
       menu.style.left = clamp(rect.left, 14, window.innerWidth - 574) + "px";
       menu.style.top = clamp(rect.bottom + 8, 14, window.innerHeight - 128) + "px";
+      renderSelectionTranslation(activeRange, activeBlock);
       menu.classList.add("open");
     });
 
@@ -246,6 +316,7 @@
     }
 
     const caption = detectCaption(commonBlock, selectedText);
+    const matchedTranslations = translationForRange(activeRange, commonBlock);
     const id = "ann-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
     const section = currentSection(commonBlock);
     const markOk = wrapRange(activeRange, id, labelId);
@@ -255,6 +326,7 @@
       labelId,
       label: label.name,
       text: selectedText,
+      translation: matchedTranslations.map((item) => item.translation).filter(Boolean).join("\n"),
       note: "",
       section,
       blockId: commonBlock.dataset.readerBlock,
@@ -350,6 +422,7 @@
     if (annotation.mediaSrc) meta.append(el("span", "", annotation.mediaSrc));
 
     const text = el("p", "reader-card-text", annotation.text);
+    const translation = annotation.translation ? el("p", "reader-card-translation", annotation.translation) : null;
     const note = document.createElement("textarea");
     note.placeholder = "\u5907\u6ce8\uff0c\u53ef\u9009";
     note.value = annotation.note || "";
@@ -364,7 +437,9 @@
       button("\u5220\u9664", "", () => removeAnnotation(annotation.id))
     );
 
-    card.append(meta, text, note, actions);
+    card.append(meta, text);
+    if (translation) card.append(translation);
+    card.append(note, actions);
     return card;
   }
 
@@ -467,6 +542,7 @@
         if (annotation.isCaption) lines.push("  Type: caption");
         if (annotation.mediaSrc) lines.push("  Media: " + annotation.mediaSrc);
         lines.push("  Text: " + annotation.text.replace(/\s+/g, " "));
+        if (annotation.translation) lines.push("  Translation: " + annotation.translation.replace(/\s+/g, " "));
         if (annotation.note) lines.push("  Note: " + annotation.note.replace(/\s+/g, " "));
         lines.push("");
       });
@@ -562,6 +638,17 @@
   function loadState() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function loadTranslations() {
+    const script = document.getElementById("reader-translations");
+    if (!script) return {};
+    try {
+      const payload = JSON.parse(script.textContent || "{}");
+      return payload.items || {};
     } catch (error) {
       return {};
     }

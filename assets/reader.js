@@ -242,20 +242,86 @@
     const list = document.querySelector(".reader-label-list");
     if (!list) return;
     list.innerHTML = "";
-    labels.forEach((label, index) => {
+    bindLabelDragList(list);
+    labels.forEach((label) => {
       const item = el("div", "reader-label-item");
+      item.dataset.labelId = label.id;
+      const dragHandle = el("span", "reader-label-drag", "\u2630");
+      dragHandle.draggable = true;
+      dragHandle.title = "\u62d6\u62fd\u6392\u5e8f";
+      dragHandle.addEventListener("dragstart", startLabelDrag);
+      dragHandle.addEventListener("dragend", finishLabelDrag);
       const swatch = el("span", "reader-label-swatch");
       swatch.style.backgroundColor = label.color;
       const name = el("span", "reader-label-name", label.name);
       const actions = el("span", "reader-label-actions");
       actions.append(
-        smallButton("\u2191", "\u4e0a\u79fb", () => moveLabel(index, -1), index === 0),
-        smallButton("\u2193", "\u4e0b\u79fb", () => moveLabel(index, 1), index === labels.length - 1),
         smallButton("\u00d7", "\u5220\u9664", () => deleteLabel(label.id), false)
       );
-      item.append(swatch, name, actions);
+      item.append(dragHandle, swatch, name, actions);
       list.append(item);
     });
+  }
+
+  function bindLabelDragList(list) {
+    list.ondragover = (event) => {
+      event.preventDefault();
+      const dragging = list.querySelector(".reader-label-item.dragging");
+      if (!dragging) return;
+      const after = dragAfterLabel(list, event.clientY);
+      if (!after) {
+        list.append(dragging);
+      } else {
+        list.insertBefore(dragging, after);
+      }
+    };
+    list.ondrop = (event) => {
+      event.preventDefault();
+      commitDraggedLabelOrder(list);
+    };
+  }
+
+  function startLabelDrag(event) {
+    const item = event.currentTarget.closest(".reader-label-item");
+    if (!item) return;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", item.dataset.labelId || "");
+    requestAnimationFrame(() => item.classList.add("dragging"));
+  }
+
+  function finishLabelDrag(event) {
+    const item = event.currentTarget.closest(".reader-label-item");
+    if (item) item.classList.remove("dragging");
+    const list = document.querySelector(".reader-label-list");
+    if (list) commitDraggedLabelOrder(list);
+  }
+
+  function dragAfterLabel(list, y) {
+    const items = Array.from(list.querySelectorAll(".reader-label-item:not(.dragging)"));
+    return items.reduce((closest, item) => {
+      const box = item.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset, item };
+      }
+      return closest;
+    }, { offset: Number.NEGATIVE_INFINITY, item: null }).item;
+  }
+
+  function commitDraggedLabelOrder(list) {
+    const ids = Array.from(list.querySelectorAll(".reader-label-item"))
+      .map((item) => item.dataset.labelId)
+      .filter(Boolean);
+    if (ids.length !== labels.length) return;
+    const byId = new Map(labels.map((label) => [label.id, label]));
+    const reordered = ids.map((id) => byId.get(id)).filter(Boolean);
+    if (reordered.length !== labels.length) return;
+    if (reordered.every((label, index) => label.id === labels[index].id)) return;
+    labels = reordered;
+    saveState();
+    renderLabelList();
+    renderSelectionMenu();
+    renderSummary();
   }
 
   function bindSelection() {
@@ -480,20 +546,6 @@
       color: LABEL_COLORS[labels.length % LABEL_COLORS.length]
     });
     input.value = "";
-    saveState();
-    renderLabelList();
-    renderSelectionMenu();
-    renderSummary();
-  }
-
-  function moveLabel(index, direction) {
-    const next = index + direction;
-    if (next < 0 || next >= labels.length) return;
-    const copy = labels.slice();
-    const temp = copy[index];
-    copy[index] = copy[next];
-    copy[next] = temp;
-    labels = copy;
     saveState();
     renderLabelList();
     renderSelectionMenu();

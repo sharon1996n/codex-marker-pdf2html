@@ -289,13 +289,42 @@ body.reader-ready {
 
 .reader-label-item {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   gap: 7px;
   align-items: center;
   padding: 6px;
   border: 1px solid #dde3eb;
   border-radius: 6px;
   background: white;
+}
+
+.reader-label-item.dragging {
+  opacity: 0.45;
+}
+
+.reader-label-drag {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #7b8796;
+  cursor: grab;
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+}
+
+.reader-label-drag:hover,
+.reader-label-drag:focus {
+  border-color: var(--reader-border);
+  background: #f2f5f8;
+  color: #253244;
+}
+
+.reader-label-drag:active {
+  cursor: grabbing;
 }
 
 .reader-label-swatch {
